@@ -1,133 +1,94 @@
 import React, { useState, useEffect } from 'react';
+import FacebookLogin from 'react-facebook-login';
 import axios from 'axios';
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [user, setUser] = useState(null);
+  const [userData, setUserData] = useState({});
   const [pages, setPages] = useState([]);
-  const [selectedPage, setSelectedPage] = useState(null);
-  const [pageInsights, setPageInsights] = useState(null);
+  const [selectedPage, setSelectedPage] = useState('');
+  const [pageInsights, setPageInsights] = useState({});
+
+  const responseFacebook = (response) => {
+    console.log(response);
+    setIsLoggedIn(true);
+    setUserData(response);
+    getFacebookPages(response.userID);
+  };
+
+  const getFacebookPages = async (userId) => {
+    try {
+      const response = await axios.get(`https://graph.facebook.com/${userId}/accounts?access_token=${userData.accessToken}`);
+      const pagesData = response.data.data;
+      setPages(pagesData);
+    } catch (error) {
+      console.error('Error fetching pages:', error);
+    }
+  };
+
+  const handlePageChange = (event) => {
+    setSelectedPage(event.target.value);
+  };
+
+  const fetchPageInsights = async (pageId) => {
+    try {
+      const response = await axios.get(`https://graph.facebook.com/${pageId}/insights/page_fans,page_engagement,page_impressions,page_reactions?period=total_over_range&access_token=${userData.accessToken}`);
+      setPageInsights(response.data);
+    } catch (error) {
+      console.error('Error fetching insights:', error);
+    }
+  };
 
   useEffect(() => {
-    // Check if the user is logged in
-    const accessToken = localStorage.getItem('accessToken');
-    if (accessToken) {
-      setIsLoggedIn(true);
-      getUserData(accessToken);
+    if (selectedPage) {
+      fetchPageInsights(selectedPage);
     }
-  }, []);
-
-  // Get user data
-  const getUserData = async (accessToken) => {
-    try {
-      const response = await axios.get(`https://graph.facebook.com/me?fields=id,name,picture.type(large)&access_token=${accessToken}`);
-      setUser(response.data);
-      getPages(accessToken);
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  // Get user's pages
-  const getPages = async (accessToken) => {
-    try {
-      const response = await axios.get(`https://graph.facebook.com/me/accounts?fields=id,name&access_token=${accessToken}`);
-      setPages(response.data.data);
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  // Get page insights
-  const getPageInsights = async (pageId, accessToken) => {
-    try {
-      const response = await axios.get(`https://graph.facebook.com/${pageId}/insights?fields=page_fans,page_engagement,page_impressions,page_total_actions&period=total_over_range&since=2023-01-01&until=2023-02-01&access_token=${accessToken}`);
-      setPageInsights(response.data.data);
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  // Handle login
-  const handleLogin = () => {
-    // Redirect to Facebook login URL
-    window.location.href = 'https://www.facebook.com/dialog/oauth?client_id=YOUR_APP_ID&redirect_uri=YOUR_REDIRECT_URI&scope=public_profile,pages_read_user_content,manage_pages&response_type=token';
-  };
-
-  // Handle page selection
-  const handlePageSelect = async (pageId) => {
-    setSelectedPage(pageId);
-    const accessToken = localStorage.getItem('accessToken');
-    if (accessToken) {
-      getPageInsights(pageId, accessToken);
-    }
-  };
-
-  // Handle logout
-  const handleLogout = () => {
-    localStorage.removeItem('accessToken');
-    setIsLoggedIn(false);
-    setUser(null);
-    setPages([]);
-    setSelectedPage(null);
-    setPageInsights(null);
-  };
-
-  // Redirect to Facebook after login
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const accessToken = urlParams.get('access_token');
-    if (accessToken) {
-      localStorage.setItem('accessToken', accessToken);
-      setIsLoggedIn(true);
-      getUserData(accessToken);
-      window.history.replaceState({}, document.title, '/'); // Remove access token from URL
-    }
-  }, []);
+  }, [selectedPage]);
 
   return (
-    <div className="container">
+    <div className="App">
       {!isLoggedIn && (
-        <div className="login-container">
-          <h1>Facebook Login</h1>
-          <button onClick={handleLogin}>Login with Facebook</button>
-        </div>
+        <FacebookLogin
+          appId="345894788383067"
+          autoLoad={true}
+          fields="name,email,picture"
+          callback={responseFacebook}
+        />
       )}
       {isLoggedIn && (
-        <div className="app-container">
-          <div className="user-info">
-            <h2>Welcome, {user ? user.name : ''}</h2>
-            <img src={user ? user.picture.data.url : ''} alt="Profile Picture" />
-          </div>
-          <div className="pages-container">
-            <h3>Select a Page</h3>
-            <select value={selectedPage} onChange={(e) => handlePageSelect(e.target.value)}>
-              <option value="">Select a page</option>
-              {pages.map((page) => (
-                <option key={page.id} value={page.id}>
-                  {page.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          {selectedPage && pageInsights && (
-            <div className="insights-container">
-              <h3>Page Insights: {pages.find((page) => page.id === selectedPage)?.name}</h3>
-              <div className="insight-card">
-                <h4>Total Followers: {pageInsights.page_fans.data[0].values[0].value}</h4>
+        <div>
+          <h1>Welcome, {userData.name}!</h1>
+          <img src={userData.picture.data.url} alt="Profile Picture" />
+          <h2>Select a Page:</h2>
+          <select value={selectedPage} onChange={handlePageChange}>
+            <option value="">Select a page</option>
+            {pages.map((page) => (
+              <option key={page.id} value={page.id}>
+                {page.name}
+              </option>
+            ))}
+          </select>
+          {selectedPage && (
+            <div>
+              <h2>Page Insights:</h2>
+              <div>
+                <h3>Fans:</h3>
+                {pageInsights.data && pageInsights.data[0].values && pageInsights.data[0].values[0].value}
               </div>
-              <div className="insight-card">
-                <h4>Total Engagement: {pageInsights.page_engagement.data[0].values[0].value}</h4>
+              <div>
+                <h3>Engagement:</h3>
+                {pageInsights.data && pageInsights.data[1].values && pageInsights.data[1].values[0].value}
               </div>
-              <div className="insight-card">
-                <h4>Total Impressions: {pageInsights.page_impressions.data[0].values[0].value}</h4>
+              <div>
+                <h3>Impressions:</h3>
+                {pageInsights.data && pageInsights.data[2].values && pageInsights.data[2].values[0].value}
               </div>
-              <div className="insight-card">
-                <h4>Total Actions: {pageInsights.page_total_actions.data[0].values[0].value}</h4>
+              <div>
+                <h3>Reactions:</h3>
+                {pageInsights.data && pageInsights.data[3].values && pageInsights.data[3].values[0].value}
               </div>
             </div>
           )}
-          <button onClick={handleLogout}>Logout</button>
         </div>
       )}
     </div>
